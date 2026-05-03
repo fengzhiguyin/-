@@ -1,0 +1,41 @@
+name: Global AdBlock Clean Factory
+on:
+  schedule:
+    - cron: '0 16 * * *' # 每天北京时间凌晨0点运行
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Process Scripts
+        run: |
+          # 定义需要脱敏的脚本源（YouTube、通用去广告、各大App重写）
+          declare -A scripts=(
+            ["youtube.js"]="https://githubusercontent.com"
+            ["global_ads.js"]="https://githubusercontent.com"
+          )
+
+          for name in "${!scripts[@]}"; do
+            echo "Processing $name..."
+            curl -sSL "${scripts[$name]}" -o "$name"
+            
+            # 核心安全操作：暴力替换所有外发请求函数
+            sed -i 's/\$httpClient\.post/console.log/g' "$name"
+            sed -i 's/\$httpClient\.get/console.log/g' "$name"
+            sed -i 's/fetch(/console.log(/g' "$name"
+            sed -i 's/\$httpClient\.put/console.log/g' "$name"
+            
+            echo "// Auto Cleaned at $(date)" | cat - "$name" > temp && mv temp "$name"
+          done
+
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Update Global Clean Scripts" || exit 0
+          git push
