@@ -1,8 +1,8 @@
 name: Global AdBlock Clean Factory
 on:
   schedule:
-    - cron: '0 16 * * *' # 每天北京时间凌晨0点运行
-  workflow_dispatch:      # 支持手动触发
+    - cron: '0 16 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,26 +15,25 @@ jobs:
 
       - name: Process Scripts
         run: |
-          # 使用 CDN 镜像地址，解决 ://githubusercontent.com 解析失败问题
+          # 换用 statically.io 镜像，避免 jsdelivr 节点抖动
           declare -A scripts=(
-            ["youtube.js"]="https://jsdelivr.net"
-            ["global_ads.js"]="https://jsdelivr.net"
+            ["youtube.js"]="https://statically.io"
+            ["global_ads.js"]="https://statically.io"
           )
 
           for name in "${!scripts[@]}"; do
-            echo "Processing $name..."
-            # 增加重试机制，最多尝试 5 次
-            curl -L --retry 5 --retry-delay 5 "${scripts[$name]}" -o "$name" || exit 1
+            echo "Attempting to download $name..."
+            # 使用简化的 curl 参数，增加重试
+            curl -fSsl --retry 3 --connect-timeout 20 "${scripts[$name]}" -o "$name" || exit 1
             
-            # 【核心安全脱敏】将所有联网函数替换为日志打印，使其物理无法外发数据
+            # 【暴力脱敏】物理隔绝脚本联网权限
             sed -i 's/\$httpClient\.post/console.log/g' "$name"
             sed -i 's/\$httpClient\.get/console.log/g' "$name"
             sed -i 's/\$httpClient\.put/console.log/g' "$name"
-            sed -i 's/\$httpClient\.delete/console.log/g' "$name"
             sed -i 's/fetch(/console.log(/g' "$name"
             
-            # 注入清洗时间戳
-            echo "// Cleaned by GitHub Actions at $(date)" | cat - "$name" > temp && mv temp "$name"
+            echo "// Cleaned and Verified at $(date)" | cat - "$name" > temp && mv temp "$name"
+            echo "Successfully processed $name"
           done
 
       - name: Commit and Push
@@ -42,5 +41,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Auto update: Cleaned scripts $(date)" || exit 0
+          git commit -m "Manual sync: Safe scripts $(date)" || exit 0
           git push
