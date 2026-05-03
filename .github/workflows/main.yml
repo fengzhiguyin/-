@@ -2,34 +2,39 @@ name: Global AdBlock Clean Factory
 on:
   schedule:
     - cron: '0 16 * * *' # 每天北京时间凌晨0点运行
-  workflow_dispatch:
+  workflow_dispatch:      # 支持手动触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Process Scripts
         run: |
-          # 定义需要脱敏的脚本源（YouTube、通用去广告、各大App重写）
+          # 使用 CDN 镜像地址，解决 ://githubusercontent.com 解析失败问题
           declare -A scripts=(
-            ["youtube.js"]="https://githubusercontent.com"
-            ["global_ads.js"]="https://githubusercontent.com"
+            ["youtube.js"]="https://jsdelivr.net"
+            ["global_ads.js"]="https://jsdelivr.net"
           )
 
           for name in "${!scripts[@]}"; do
             echo "Processing $name..."
-            curl -sSL "${scripts[$name]}" -o "$name"
+            # 增加重试机制，最多尝试 5 次
+            curl -L --retry 5 --retry-delay 5 "${scripts[$name]}" -o "$name" || exit 1
             
-            # 核心安全操作：暴力替换所有外发请求函数
+            # 【核心安全脱敏】将所有联网函数替换为日志打印，使其物理无法外发数据
             sed -i 's/\$httpClient\.post/console.log/g' "$name"
             sed -i 's/\$httpClient\.get/console.log/g' "$name"
-            sed -i 's/fetch(/console.log(/g' "$name"
             sed -i 's/\$httpClient\.put/console.log/g' "$name"
+            sed -i 's/\$httpClient\.delete/console.log/g' "$name"
+            sed -i 's/fetch(/console.log(/g' "$name"
             
-            echo "// Auto Cleaned at $(date)" | cat - "$name" > temp && mv temp "$name"
+            # 注入清洗时间戳
+            echo "// Cleaned by GitHub Actions at $(date)" | cat - "$name" > temp && mv temp "$name"
           done
 
       - name: Commit and Push
@@ -37,5 +42,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Update Global Clean Scripts" || exit 0
+          git commit -m "Auto update: Cleaned scripts $(date)" || exit 0
           git push
