@@ -15,24 +15,25 @@ jobs:
 
       - name: Process Scripts
         run: |
-          # 修正后的最强全量下载源
+          # 换用 Statically CDN 镜像，强制绕过 githubusercontent 解析问题
           declare -A scripts=(
-            ["youtube.js"]="https://githubusercontent.com"
-            ["global_ads.js"]="https://githubusercontent.com"
+            ["youtube.js"]="https://statically.io"
+            ["global_ads.js"]="https://statically.io"
           )
 
           for name in "${!scripts[@]}"; do
-            echo "Downloading $name..."
-            # 增加 -L 解决跳转问题
-            curl -fSsl -L --retry 5 --connect-timeout 20 "${scripts[$name]}" -o "$name" || exit 1
+            echo "Downloading $name via Statically CDN..."
+            # 增加 -L (跟随重定向) 和多次重试
+            curl -fSsl -L --retry 5 --retry-delay 5 --connect-timeout 30 "${scripts[$name]}" -o "$name" || exit 1
             
-            # 【核心安全脱敏】物理切断联网上传权限
+            # 【核心脱敏】物理切断联网上传权限，保障隐私安全
             sed -i 's/\$httpClient\.post/console.log/g' "$name"
             sed -i 's/\$httpClient\.get/console.log/g' "$name"
             sed -i 's/\$httpClient\.put/console.log/g' "$name"
             sed -i 's/fetch(/console.log(/g' "$name"
             
             echo "// Cleaned by Factory at $(date)" | cat - "$name" > temp && mv temp "$name"
+            echo "Successfully processed $name"
           done
 
       - name: Commit and Push
@@ -40,5 +41,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Final Clean Update $(date)" || exit 0
+          git commit -m "CDN Sync Update $(date)" || exit 0
           git push
