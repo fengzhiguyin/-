@@ -15,25 +15,24 @@ jobs:
 
       - name: Process Scripts
         run: |
-          # 换用 statically.io 镜像，避免 jsdelivr 节点抖动
+          # 修正后的最强全量下载源
           declare -A scripts=(
-            ["youtube.js"]="https://statically.io"
-            ["global_ads.js"]="https://statically.io"
+            ["youtube.js"]="https://githubusercontent.com"
+            ["global_ads.js"]="https://githubusercontent.com"
           )
 
           for name in "${!scripts[@]}"; do
-            echo "Attempting to download $name..."
-            # 使用简化的 curl 参数，增加重试
-            curl -fSsl --retry 3 --connect-timeout 20 "${scripts[$name]}" -o "$name" || exit 1
+            echo "Downloading $name..."
+            # 增加 -L 解决跳转问题
+            curl -fSsl -L --retry 5 --connect-timeout 20 "${scripts[$name]}" -o "$name" || exit 1
             
-            # 【暴力脱敏】物理隔绝脚本联网权限
+            # 【核心安全脱敏】物理切断联网上传权限
             sed -i 's/\$httpClient\.post/console.log/g' "$name"
             sed -i 's/\$httpClient\.get/console.log/g' "$name"
             sed -i 's/\$httpClient\.put/console.log/g' "$name"
             sed -i 's/fetch(/console.log(/g' "$name"
             
-            echo "// Cleaned and Verified at $(date)" | cat - "$name" > temp && mv temp "$name"
-            echo "Successfully processed $name"
+            echo "// Cleaned by Factory at $(date)" | cat - "$name" > temp && mv temp "$name"
           done
 
       - name: Commit and Push
@@ -41,5 +40,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Manual sync: Safe scripts $(date)" || exit 0
+          git commit -m "Final Clean Update $(date)" || exit 0
           git push
